@@ -1,0 +1,10 @@
+[package]
+name = "p2pshare"
+version = "0.1.0"
+authors = ["sireliah"]
+edition = "2018"
+
+[dependencies]
+async-std = "1.5.0"
+futures = "0.3.4"
+libp2p = "0.16.2"
