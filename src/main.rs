@@ -1,15 +1,12 @@
 use async_std::{io, task};
 use futures::{executor, future, prelude::*};
 use libp2p::{
-    identity,
+    build_development_transport, identity,
     mdns::{Mdns, MdnsEvent},
-    mplex,
-    secio::SecioConfig,
     swarm::NetworkBehaviourEventProcess,
-    tcp::TcpConfig, NetworkBehaviour, PeerId, Swarm, Transport,
+    NetworkBehaviour, PeerId, Swarm,
 };
 
-use libp2p::core::transport::upgrade::Version;
 use std::{
     error::Error,
     task::{Context, Poll},
@@ -72,11 +69,8 @@ async fn execute_swarm() {
             mdns,
             transfer_behaviour,
         };
-        let mplex = mplex::MplexConfig::new();
-        let transport = TcpConfig::new()
-            .upgrade(Version::V1)
-            .authenticate(SecioConfig::new(local_keys.clone()))
-            .multiplex(mplex);
+        let transport = build_development_transport(local_keys.clone()).unwrap();
+
         Swarm::new(transport, behaviour, local_peer_id)
     };
 

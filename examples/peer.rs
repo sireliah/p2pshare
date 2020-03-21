@@ -1,7 +1,7 @@
 use async_std::task;
 use futures::{executor, future, prelude::*};
 use libp2p::{
-    identity,
+    build_development_transport, identity,
     mdns::{Mdns, MdnsEvent},
     mplex,
     secio::SecioConfig,
@@ -72,13 +72,14 @@ async fn execute_swarm() {
 
     let mut swarm = {
         let mdns = Mdns::new().unwrap();
-        let transfer_behaviour = TransferBehaviour::new(local_peer_id.clone());
+        let transfer_behaviour = TransferBehaviour::new();
         let mplex = mplex::MplexConfig::new();
 
         let behaviour = MyBehaviour {
             mdns,
             transfer_behaviour,
         };
+        let transport = build_development_transport(local_keys.clone());
         let transport = TcpConfig::new()
             .upgrade(Version::V1)
             .authenticate(SecioConfig::new(local_keys.clone()))

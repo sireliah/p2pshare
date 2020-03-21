@@ -40,9 +40,9 @@ impl NetworkBehaviour for TransferBehaviour {
     type OutEvent = TransferPayload;
 
     fn new_handler(&mut self) -> Self::ProtocolsHandler {
-        let duration = Duration::new(120, 0);
+        let duration = Duration::new(1200, 0);
         let tp = TransferPayload::new("".to_string(), "".to_string());
-        let proto = SubstreamProtocol::new(tp).with_timeout(Duration::new(120, 0));
+        let proto = SubstreamProtocol::new(tp).with_timeout(Duration::new(1200, 0));
         Self::ProtocolsHandler::new(proto, duration)
     }
 
@@ -98,27 +98,43 @@ impl NetworkBehaviour for TransferBehaviour {
             }
             None => {}
         };
-        for peer in self.peers.iter() {
-            if !self.connected_peers.contains(peer) {
-                println!("Will try to dial: {:?}", peer);
-                let millis = Duration::from_millis(100);
-                thread::sleep(millis);
-                return Poll::Ready(NetworkBehaviourAction::DialPeer {
-                    peer_id: peer.to_owned(),
-                });
-            } else {
-                match self.payloads.pop() {
-                    Some(value) => {
-                        let event = TransferPayload::new(value.name, value.path);
-                        return Poll::Ready(NetworkBehaviourAction::SendEvent {
-                            peer_id: peer.to_owned(),
-                            event,
-                        });
+
+        if self.connected_peers.len() > 0 {
+            let peer = self.connected_peers.iter().nth(0).unwrap();
+            match self.payloads.pop() {
+                Some(value) => {
+                    let event = TransferPayload::new(value.name, value.path);
+                    return Poll::Ready(NetworkBehaviourAction::SendEvent {
+                        peer_id: peer.to_owned(),
+                        event,
+                    });
+                }
+                None => return Poll::Pending,
+            }
+        } else {
+            for peer in self.peers.iter() {
+                if !self.connected_peers.contains(peer) {
+                    println!("Will try to dial: {:?}", peer);
+                    let millis = Duration::from_millis(100);
+                    thread::sleep(millis);
+                    return Poll::Ready(NetworkBehaviourAction::DialPeer {
+                        peer_id: peer.to_owned(),
+                    });
+                } else {
+                    match self.payloads.pop() {
+                        Some(value) => {
+                            let event = TransferPayload::new(value.name, value.path);
+                            return Poll::Ready(NetworkBehaviourAction::SendEvent {
+                                peer_id: peer.to_owned(),
+                                event,
+                            });
+                        }
+                        None => return Poll::Pending,
                     }
-                    None => return Poll::Pending,
                 }
             }
         }
+
         Poll::Pending
     }
 }

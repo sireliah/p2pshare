@@ -72,8 +72,12 @@ where
                 match reader.read(&mut buff).await {
                     Ok(n) => {
                         if n > 0 {
-                            // Use simple in memory buffering for now
                             payloads.extend(&buff[..n]);
+                            if payloads.len() > 1024 * 1024 {
+                                file.write(&payloads).await.expect("Writing file failed");
+                                println!("Wrote {:?} bytes", payloads.len());
+                                payloads.clear();
+                            }
                             counter += n;
                         } else {
                             break;
@@ -82,11 +86,9 @@ where
                     Err(e) => panic!("Failed reading the socket {:?}", e),
                 }
             }
-            file.write_all(&payloads).await?;
             println!("Finished {:?} ms", start.elapsed().as_millis());
             println!("Name: {}, Read {:?} bytes", name, counter);
             let event = TransferPayload::new(name, path);
-            reader.close().await?;
             Ok(event)
         })
     }
@@ -104,13 +106,16 @@ where
         Box::pin(async move {
             println!("Upgrade outbound");
             let start = now();
-            let filename = "file.flac";
+            let filename = "kot.mp4";
             let path = format!("/tmp/{}", filename);
             let mut file = asyncio::BufReader::new(File::open(path).await.expect("File missing"));
             let mut contents = vec![];
-            file.read_to_end(&mut contents).await.expect("Cannot read file");
-            socket.write_all(&contents).await?;
-            socket.close().await?;
+            file.read_to_end(&mut contents)
+                .await
+                .expect("Cannot read file");
+            socket.write_all(&contents).await.expect("Writing failed");
+            socket.flush().await?;
+            socket.close().await.expect("Failed to close socket");
             println!("Finished {:?} ms", start.elapsed().as_millis());
             Ok(())
         })
