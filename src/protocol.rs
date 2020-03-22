@@ -73,13 +73,14 @@ where
                     Ok(n) => {
                         if n > 0 {
                             payloads.extend(&buff[..n]);
-                            if payloads.len() > 1024 * 1024 {
+                            counter += n;
+                            if payloads.len() > (1024 * 128) {
                                 file.write(&payloads).await.expect("Writing file failed");
-                                println!("Wrote {:?} bytes", payloads.len());
                                 payloads.clear();
                             }
-                            counter += n;
                         } else {
+                            file.write(&payloads).await.expect("Writing file failed");
+                            payloads.clear();
                             break;
                         }
                     }
@@ -114,7 +115,6 @@ where
                 .await
                 .expect("Cannot read file");
             socket.write_all(&contents).await.expect("Writing failed");
-            socket.flush().await?;
             socket.close().await.expect("Failed to close socket");
             println!("Finished {:?} ms", start.elapsed().as_millis());
             Ok(())

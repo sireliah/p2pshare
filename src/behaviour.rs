@@ -40,9 +40,9 @@ impl NetworkBehaviour for TransferBehaviour {
     type OutEvent = TransferPayload;
 
     fn new_handler(&mut self) -> Self::ProtocolsHandler {
-        let duration = Duration::new(1200, 0);
+        let duration = Duration::new(60, 0);
         let tp = TransferPayload::new("".to_string(), "".to_string());
-        let proto = SubstreamProtocol::new(tp).with_timeout(Duration::new(1200, 0));
+        let proto = SubstreamProtocol::new(tp).with_timeout(Duration::new(60, 0));
         Self::ProtocolsHandler::new(proto, duration)
     }
 
