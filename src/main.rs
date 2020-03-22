@@ -1,20 +1,22 @@
 use async_std::{io, task};
 use futures::{executor, future, prelude::*};
 use libp2p::{
+    build_development_transport,
     core::transport::timeout::TransportTimeout,
-    build_development_transport, identity,
+    identity,
     mdns::{Mdns, MdnsEvent},
     swarm::NetworkBehaviourEventProcess,
     NetworkBehaviour, PeerId, Swarm,
 };
 
 use std::{
-    time::Duration,
     error::Error,
     task::{Context, Poll},
+    time::Duration,
 };
 
 mod behaviour;
+mod handler;
 mod protocol;
 
 use behaviour::TransferBehaviour;
@@ -72,7 +74,10 @@ async fn execute_swarm() {
             transfer_behaviour,
         };
         let timeout = Duration::from_secs(60);
-        let transport = TransportTimeout::new(build_development_transport(local_keys.clone()).unwrap(), timeout);
+        let transport = TransportTimeout::new(
+            build_development_transport(local_keys.clone()).unwrap(),
+            timeout,
+        );
 
         Swarm::new(transport, behaviour, local_peer_id)
     };

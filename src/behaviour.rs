@@ -1,11 +1,12 @@
 use libp2p::core::{ConnectedPoint, Multiaddr, PeerId};
-use libp2p::swarm::protocols_handler::OneShotHandler;
+// use libp2p::swarm::protocols_handler::OneShotHandler;
 use libp2p::swarm::{NetworkBehaviour, NetworkBehaviourAction, PollParameters, SubstreamProtocol};
 use std::collections::HashSet;
 use std::task::{Context, Poll};
 use std::thread;
 use std::time::Duration;
 
+use crate::handler::OneShotHandler;
 use crate::protocol::{FileObject, ProtocolEvent, TransferPayload};
 
 pub struct TransferBehaviour {
@@ -40,10 +41,10 @@ impl NetworkBehaviour for TransferBehaviour {
     type OutEvent = TransferPayload;
 
     fn new_handler(&mut self) -> Self::ProtocolsHandler {
-        let duration = Duration::new(60, 0);
+        let timeout = Duration::from_secs(60);
         let tp = TransferPayload::new("".to_string(), "".to_string());
-        let proto = SubstreamProtocol::new(tp).with_timeout(Duration::new(60, 0));
-        Self::ProtocolsHandler::new(proto, duration)
+        let proto = SubstreamProtocol::new(tp).with_timeout(timeout);
+        Self::ProtocolsHandler::new(proto, timeout)
     }
 
     fn addresses_of_peer(&mut self, _peer_id: &PeerId) -> Vec<Multiaddr> {

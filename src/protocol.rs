@@ -75,11 +75,15 @@ where
                             payloads.extend(&buff[..n]);
                             counter += n;
                             if payloads.len() > (1024 * 128) {
-                                file.write(&payloads).await.expect("Writing file failed");
+                                file.write_all(&payloads)
+                                    .await
+                                    .expect("Writing file failed");
                                 payloads.clear();
                             }
                         } else {
-                            file.write(&payloads).await.expect("Writing file failed");
+                            file.write_all(&payloads)
+                                .await
+                                .expect("Writing file failed");
                             payloads.clear();
                             break;
                         }
@@ -107,7 +111,7 @@ where
         Box::pin(async move {
             println!("Upgrade outbound");
             let start = now();
-            let filename = "kot.mp4";
+            let filename = "file.flac";
             let path = format!("/tmp/{}", filename);
             let mut file = asyncio::BufReader::new(File::open(path).await.expect("File missing"));
             let mut contents = vec![];
