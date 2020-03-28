@@ -49,7 +49,12 @@ impl NetworkBehaviourEventProcess<MdnsEvent> for MyBehaviour {
 impl NetworkBehaviourEventProcess<ProtocolEvent> for MyBehaviour {
     fn inject_event(&mut self, event: ProtocolEvent) {
         match event {
-            ProtocolEvent::Received { name, path } => println!("Data: {} {}", name, path),
+            ProtocolEvent::Received {
+                name,
+                path,
+                hash,
+                size_bytes,
+            } => println!("Inject: Data: {} {} {} {}", name, path, hash, size_bytes),
             ProtocolEvent::Sent => println!("sent!"),
         }
     }
@@ -74,7 +79,7 @@ async fn execute_swarm() {
             transfer_behaviour,
         };
         let timeout = Duration::from_secs(60);
-        let transport = TransportTimeout::new(
+        let transport = TransportTimeout::with_outgoing_timeout(
             build_development_transport(local_keys.clone()).unwrap(),
             timeout,
         );
@@ -84,7 +89,7 @@ async fn execute_swarm() {
 
     let mut stdin = io::BufReader::new(io::stdin()).lines();
 
-    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).unwrap();
+    Swarm::listen_on(&mut swarm, "/ip4/0.0.0.0/tcp/0".parse().unwrap()).expect("Failed to listen");
     let mut listening = false;
     task::block_on(future::poll_fn(move |context: &mut Context| {
         loop {

@@ -7,13 +7,13 @@ use std::thread;
 use std::time::Duration;
 
 use crate::handler::OneShotHandler;
-use crate::protocol::{FileObject, ProtocolEvent, TransferPayload};
+use crate::protocol::{FileToSend, ProtocolEvent, TransferPayload};
 
 pub struct TransferBehaviour {
     pub peers: HashSet<PeerId>,
     pub connected_peers: HashSet<PeerId>,
     pub events: Vec<NetworkBehaviourAction<TransferPayload, TransferPayload>>,
-    payloads: Vec<FileObject>,
+    payloads: Vec<FileToSend>,
 }
 
 impl TransferBehaviour {
@@ -28,7 +28,7 @@ impl TransferBehaviour {
 
     pub fn push_payload(&mut self, payload: String) {
         let path = payload.clone();
-        let file = FileObject {
+        let file = FileToSend {
             name: payload,
             path,
         };
@@ -41,10 +41,10 @@ impl NetworkBehaviour for TransferBehaviour {
     type OutEvent = TransferPayload;
 
     fn new_handler(&mut self) -> Self::ProtocolsHandler {
-        let timeout = Duration::from_secs(60);
-        let tp = TransferPayload::new("".to_string(), "".to_string());
+        let timeout = Duration::from_secs(120);
+        let tp = TransferPayload::default();
         let proto = SubstreamProtocol::new(tp).with_timeout(timeout);
-        Self::ProtocolsHandler::new(proto, timeout)
+        Self::ProtocolsHandler::new(proto, timeout, timeout)
     }
 
     fn addresses_of_peer(&mut self, _peer_id: &PeerId) -> Vec<Multiaddr> {
@@ -78,8 +78,13 @@ impl NetworkBehaviour for TransferBehaviour {
 
     fn inject_node_event(&mut self, _peer: PeerId, event: ProtocolEvent) {
         match event {
-            ProtocolEvent::Received { name, path } => {
-                let event = TransferPayload::new(name, path);
+            ProtocolEvent::Received {
+                name,
+                path,
+                hash,
+                size_bytes,
+            } => {
+                let event = TransferPayload::new(name, path, hash, size_bytes);
                 self.events
                     .push(NetworkBehaviourAction::GenerateEvent(event));
             }
@@ -104,7 +109,7 @@ impl NetworkBehaviour for TransferBehaviour {
             let peer = self.connected_peers.iter().nth(0).unwrap();
             match self.payloads.pop() {
                 Some(value) => {
-                    let event = TransferPayload::new(value.name, value.path);
+                    let event = TransferPayload::new(value.name, value.path, "".to_string(), 0);
                     return Poll::Ready(NetworkBehaviourAction::SendEvent {
                         peer_id: peer.to_owned(),
                         event,
@@ -124,7 +129,8 @@ impl NetworkBehaviour for TransferBehaviour {
                 } else {
                     match self.payloads.pop() {
                         Some(value) => {
-                            let event = TransferPayload::new(value.name, value.path);
+                            let event =
+                                TransferPayload::new(value.name, value.path, "".to_string(), 0);
                             return Poll::Ready(NetworkBehaviourAction::SendEvent {
                                 peer_id: peer.to_owned(),
                                 event,

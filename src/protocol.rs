@@ -1,21 +1,29 @@
 use async_std::fs::File;
 use async_std::io;
+use crypto::digest::Digest;
+use crypto::sha1::Sha1;
 use futures::{io as asyncio, prelude::*};
 use libp2p::core::{InboundUpgrade, OutboundUpgrade, UpgradeInfo};
+
 use std::iter;
 use std::pin::Pin;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-const CHUNK_SIZE: usize = 1024;
+const CHUNK_SIZE: usize = 4096;
 
-pub struct FileObject {
+pub struct FileToSend {
     pub name: String,
     pub path: String,
 }
 
 #[derive(Clone, Debug)]
 pub enum ProtocolEvent {
-    Received { name: String, path: String },
+    Received {
+        name: String,
+        path: String,
+        hash: String,
+        size_bytes: usize,
+    },
     Sent,
 }
 
@@ -23,12 +31,21 @@ pub enum ProtocolEvent {
 pub struct TransferPayload {
     pub name: String,
     pub path: String,
+    pub hash: String,
+    pub size_bytes: usize,
 }
 
 impl TransferPayload {
-    pub fn new(name: String, path: String) -> TransferPayload {
-        TransferPayload { name, path }
+    pub fn new(name: String, path: String, hash: String, size_bytes: usize) -> TransferPayload {
+        TransferPayload {
+            name,
+            path,
+            hash,
+            size_bytes,
+        }
     }
+
+    fn check_file() {}
 }
 
 impl UpgradeInfo for TransferPayload {
@@ -44,6 +61,71 @@ fn now() -> Instant {
     Instant::now()
 }
 
+fn add_row(value: &str) -> Vec<u8> {
+    format!("{}\n", value).into_bytes()
+}
+
+fn hash_contents(contents: &Vec<u8>) -> String {
+    let mut hasher = Sha1::new();
+    hasher.input(&contents);
+    hasher.result_str()
+}
+
+async fn read_socket(
+    socket: impl AsyncRead + AsyncWrite + Send + Unpin,
+) -> Result<TransferPayload, io::Error> {
+    let mut reader = asyncio::BufReader::new(socket);
+    let mut payloads: Vec<u8> = vec![];
+
+    let mut name: String = "".into();
+    let mut hash: String = "".into();
+    reader.read_line(&mut name).await?;
+    reader.read_line(&mut hash).await?;
+
+    let (name, hash) = (name.trim(), hash.trim());
+    println!("Name: {}, Hash: {}", name, hash);
+    let now = SystemTime::now();
+    let timestamp = now.duration_since(UNIX_EPOCH).expect("Time failed");
+    let path = format!("/tmp/files/{}_{}", timestamp.as_secs(), name);
+
+    let mut file = asyncio::BufWriter::new(File::create(&path).await?);
+    let mut counter: usize = 0;
+    loop {
+        let mut buff = vec![0u8; CHUNK_SIZE];
+        match reader.read(&mut buff).await {
+            Ok(n) => {
+                if n > 0 {
+                    payloads.extend(&buff[..n]);
+                    counter += n;
+                    if payloads.len() > (1024 * 1024) {
+                        file.write_all(&payloads)
+                            .await
+                            .expect("Writing file failed");
+                        payloads.clear();
+                    }
+                } else {
+                    file.write_all(&payloads)
+                        .await
+                        .expect("Writing file failed");
+                    payloads.clear();
+                    break;
+                }
+            }
+            Err(e) => panic!("Failed reading the socket {:?}", e),
+        }
+    }
+
+    let event = TransferPayload::new(
+        name.to_string(),
+        hash.to_string(),
+        path.to_string(),
+        counter,
+    );
+
+    println!("Name: {}, Read {:?} bytes", name, counter);
+    Ok(event)
+}
+
 impl<TSocket> InboundUpgrade<TSocket> for TransferPayload
 where
     TSocket: AsyncRead + AsyncWrite + Send + Unpin + 'static,
@@ -55,45 +137,10 @@ where
     fn upgrade_inbound(self, socket: TSocket, _: Self::Info) -> Self::Future {
         Box::pin(async move {
             println!("Upgrade inbound");
-            let mut reader = asyncio::BufReader::new(socket);
             let start = now();
-            let now = SystemTime::now();
-            let timestamp = now.duration_since(UNIX_EPOCH).expect("Time failed");
+            let event = read_socket(socket).await?;
 
-            let name = "file".to_string();
-            let path = format!("/tmp/files/{}_{}.flac", timestamp.as_secs(), name);
-            let mut file =
-                asyncio::BufWriter::new(File::create(&path).await.expect("Cannot create file"));
-
-            let mut counter: usize = 0;
-            let mut payloads: Vec<u8> = vec![];
-            loop {
-                let mut buff = vec![0u8; CHUNK_SIZE];
-                match reader.read(&mut buff).await {
-                    Ok(n) => {
-                        if n > 0 {
-                            payloads.extend(&buff[..n]);
-                            counter += n;
-                            if payloads.len() > (1024 * 128) {
-                                file.write_all(&payloads)
-                                    .await
-                                    .expect("Writing file failed");
-                                payloads.clear();
-                            }
-                        } else {
-                            file.write_all(&payloads)
-                                .await
-                                .expect("Writing file failed");
-                            payloads.clear();
-                            break;
-                        }
-                    }
-                    Err(e) => panic!("Failed reading the socket {:?}", e),
-                }
-            }
             println!("Finished {:?} ms", start.elapsed().as_millis());
-            println!("Name: {}, Read {:?} bytes", name, counter);
-            let event = TransferPayload::new(name, path);
             Ok(event)
         })
     }
@@ -111,15 +158,31 @@ where
         Box::pin(async move {
             println!("Upgrade outbound");
             let start = now();
+
+            println!("Name: {:?}, Path: {:?}", self.name, self.path);
             let filename = "file.flac";
+            // let filename = "kot.mp4";
             let path = format!("/tmp/{}", filename);
-            let mut file = asyncio::BufReader::new(File::open(path).await.expect("File missing"));
+
+            let file = File::open(path).await.expect("File missing");
+            let mut buff = asyncio::BufReader::new(&file);
             let mut contents = vec![];
-            file.read_to_end(&mut contents)
+            buff.read_to_end(&mut contents)
                 .await
                 .expect("Cannot read file");
+
+            let hash = hash_contents(&contents);
+            let name = add_row(filename);
+            let checksum = add_row(&hash);
+
+            socket.write(&name).await.expect("Writing name failed");
+            socket
+                .write(&checksum)
+                .await
+                .expect("Writing checksum failed");
             socket.write_all(&contents).await.expect("Writing failed");
             socket.close().await.expect("Failed to close socket");
+
             println!("Finished {:?} ms", start.elapsed().as_millis());
             Ok(())
         })
@@ -137,6 +200,8 @@ impl From<TransferPayload> for ProtocolEvent {
         ProtocolEvent::Received {
             name: transfer.name,
             path: transfer.path,
+            hash: transfer.hash,
+            size_bytes: transfer.size_bytes,
         }
     }
 }

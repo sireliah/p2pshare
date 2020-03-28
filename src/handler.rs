@@ -53,6 +53,7 @@ where
     keep_alive: KeepAlive,
     /// After the given duration has elapsed, an inactive connection will shutdown.
     inactive_timeout: Duration,
+    substream_timeout: Duration,
 }
 
 impl<TInProto, TOutProto, TOutEvent> OneShotHandler<TInProto, TOutProto, TOutEvent>
@@ -61,7 +62,11 @@ where
 {
     /// Creates a `OneShotHandler`.
     #[inline]
-    pub fn new(listen_protocol: SubstreamProtocol<TInProto>, inactive_timeout: Duration) -> Self {
+    pub fn new(
+        listen_protocol: SubstreamProtocol<TInProto>,
+        inactive_timeout: Duration,
+        substream_timeout: Duration,
+    ) -> Self {
         OneShotHandler {
             listen_protocol,
             pending_error: None,
@@ -71,6 +76,7 @@ where
             max_dial_negotiated: 8,
             keep_alive: KeepAlive::Yes,
             inactive_timeout,
+            substream_timeout,
         }
     }
 
@@ -115,6 +121,7 @@ where
     fn default() -> Self {
         OneShotHandler::new(
             SubstreamProtocol::new(Default::default()),
+            Duration::from_secs(60),
             Duration::from_secs(60),
         )
     }
@@ -163,7 +170,6 @@ where
         _: Self::OutboundOpenInfo,
     ) {
         self.dial_negotiated -= 1;
-        println!("Fully negotiated outbound");
         if self.dial_negotiated == 0 && self.dial_queue.is_empty() {
             self.keep_alive = KeepAlive::Until(Instant::now() + self.inactive_timeout);
         }
@@ -219,7 +225,8 @@ where
             if self.dial_negotiated < self.max_dial_negotiated {
                 self.dial_negotiated += 1;
                 return Poll::Ready(ProtocolsHandlerEvent::OutboundSubstreamRequest {
-                    protocol: SubstreamProtocol::new(self.dial_queue.remove(0)),
+                    protocol: SubstreamProtocol::new(self.dial_queue.remove(0))
+                        .with_timeout(self.substream_timeout),
                     info: (),
                 });
             }
