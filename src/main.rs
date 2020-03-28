@@ -99,8 +99,11 @@ async fn execute_swarm() {
         loop {
             match stdin.try_poll_next_unpin(context) {
                 Poll::Ready(Some(line)) => match line {
-                    Ok(value) => swarm.transfer_behaviour.push_payload(value),
-                    Err(e) => println!("Line error: {:?}", e),
+                    Ok(value) => match swarm.transfer_behaviour.push_payload(value) {
+                        Ok(_) => {}
+                        Err(e) => eprintln!("{:?}", e),
+                    },
+                    Err(e) => eprintln!("Line error: {:?}", e),
                 },
                 Poll::Ready(None) => println!("Stdin closed"),
                 Poll::Pending => break,

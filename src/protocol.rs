@@ -99,6 +99,7 @@ async fn read_socket(
     println!("Name: {}, Hash: {}", name, hash);
     let now = SystemTime::now();
     let timestamp = now.duration_since(UNIX_EPOCH).expect("Time failed");
+
     let path = format!("/tmp/files/{}_{}", timestamp.as_secs(), name);
 
     let mut file = asyncio::BufWriter::new(AsyncFile::create(&path).await?);
@@ -173,11 +174,8 @@ where
             let start = now();
 
             println!("Name: {:?}, Path: {:?}", self.name, self.path);
-            let filename = "file.flac";
-            // let filename = "kot.mp4";
-            let path = format!("/tmp/{}", filename);
 
-            let file = AsyncFile::open(path).await.expect("File missing");
+            let file = AsyncFile::open(self.path).await.expect("File missing");
             let mut buff = asyncio::BufReader::new(&file);
             let mut contents = vec![];
             buff.read_to_end(&mut contents)
@@ -185,7 +183,7 @@ where
                 .expect("Cannot read file");
 
             let hash = hash_contents(&contents);
-            let name = add_row(filename);
+            let name = add_row(&self.name);
             let checksum = add_row(&hash);
 
             socket.write(&name).await.expect("Writing name failed");

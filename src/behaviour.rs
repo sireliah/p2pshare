@@ -1,7 +1,10 @@
 use std::collections::HashSet;
+use std::error::Error;
+use std::fs;
+use std::path::Path;
 use std::task::{Context, Poll};
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 
 use libp2p::core::{ConnectedPoint, Multiaddr, PeerId};
 use libp2p::swarm::{NetworkBehaviour, NetworkBehaviourAction, PollParameters, SubstreamProtocol};
@@ -26,13 +29,22 @@ impl TransferBehaviour {
         }
     }
 
-    pub fn push_payload(&mut self, payload: String) {
-        let path = payload.clone();
+    pub fn push_payload(&mut self, filename: String) -> Result<(), Box<dyn Error>> {
+        fs::metadata(&filename)?;
+        let path = Path::new(&filename).canonicalize()?;
+        let name = path
+            .file_name()
+            .expect("There is no file name")
+            .to_str()
+            .expect("Expected a name")
+            .to_string();
+        let path_string = path.to_str().expect("Expected a path name").to_string();
         let file = FileToSend {
-            name: payload,
-            path,
+            name,
+            path: path_string,
         };
         self.payloads.push(file);
+        Ok(())
     }
 }
 
