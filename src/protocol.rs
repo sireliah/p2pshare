@@ -1,13 +1,12 @@
-use async_std::fs::File;
-use async_std::io;
+use async_std::fs::File as AsyncFile;
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;
 use futures::{io as asyncio, prelude::*};
 use libp2p::core::{InboundUpgrade, OutboundUpgrade, UpgradeInfo};
-
-use std::iter;
-use std::pin::Pin;
+use std::fs::File;
+use std::io::{BufReader, Read};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::{io, iter, pin::Pin};
 
 const CHUNK_SIZE: usize = 4096;
 
@@ -45,7 +44,21 @@ impl TransferPayload {
         }
     }
 
-    fn check_file() {}
+    pub fn check_file(&self) -> Result<(), io::Error> {
+        let mut contents = vec![];
+        let mut file = BufReader::new(File::open(&self.path)?);
+        file.read_to_end(&mut contents).expect("Cannot read file");
+        let hash_from_disk = hash_contents(&mut contents);
+
+        if hash_from_disk != self.hash {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "File corrupted!",
+            ))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl UpgradeInfo for TransferPayload {
@@ -88,7 +101,7 @@ async fn read_socket(
     let timestamp = now.duration_since(UNIX_EPOCH).expect("Time failed");
     let path = format!("/tmp/files/{}_{}", timestamp.as_secs(), name);
 
-    let mut file = asyncio::BufWriter::new(File::create(&path).await?);
+    let mut file = asyncio::BufWriter::new(AsyncFile::create(&path).await?);
     let mut counter: usize = 0;
     loop {
         let mut buff = vec![0u8; CHUNK_SIZE];
@@ -131,7 +144,7 @@ where
     TSocket: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     type Output = TransferPayload;
-    type Error = io::Error;
+    type Error = asyncio::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Output, Self::Error>> + Send>>;
 
     fn upgrade_inbound(self, socket: TSocket, _: Self::Info) -> Self::Future {
@@ -151,7 +164,7 @@ where
     TSocket: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
     type Output = ();
-    type Error = io::Error;
+    type Error = asyncio::Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Output, Self::Error>> + Send>>;
 
     fn upgrade_outbound(self, mut socket: TSocket, _: Self::Info) -> Self::Future {
@@ -164,7 +177,7 @@ where
             // let filename = "kot.mp4";
             let path = format!("/tmp/{}", filename);
 
-            let file = File::open(path).await.expect("File missing");
+            let file = AsyncFile::open(path).await.expect("File missing");
             let mut buff = asyncio::BufReader::new(&file);
             let mut contents = vec![];
             buff.read_to_end(&mut contents)
@@ -176,10 +189,7 @@ where
             let checksum = add_row(&hash);
 
             socket.write(&name).await.expect("Writing name failed");
-            socket
-                .write(&checksum)
-                .await
-                .expect("Writing checksum failed");
+            socket.write(&checksum).await?;
             socket.write_all(&contents).await.expect("Writing failed");
             socket.close().await.expect("Failed to close socket");
 

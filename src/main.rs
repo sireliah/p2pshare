@@ -63,6 +63,10 @@ impl NetworkBehaviourEventProcess<ProtocolEvent> for MyBehaviour {
 impl NetworkBehaviourEventProcess<TransferPayload> for MyBehaviour {
     fn inject_event(&mut self, event: TransferPayload) {
         println!("TransferPayload event: {:?}", event);
+        match event.check_file() {
+            Ok(_) => println!("File is correct"),
+            Err(e) => println!("{:?}", e),
+        }
     }
 }
 

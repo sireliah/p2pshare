@@ -1,10 +1,10 @@
-use libp2p::core::{ConnectedPoint, Multiaddr, PeerId};
-// use libp2p::swarm::protocols_handler::OneShotHandler;
-use libp2p::swarm::{NetworkBehaviour, NetworkBehaviourAction, PollParameters, SubstreamProtocol};
 use std::collections::HashSet;
 use std::task::{Context, Poll};
-use std::thread;
 use std::time::Duration;
+use std::thread;
+
+use libp2p::core::{ConnectedPoint, Multiaddr, PeerId};
+use libp2p::swarm::{NetworkBehaviour, NetworkBehaviourAction, PollParameters, SubstreamProtocol};
 
 use crate::handler::OneShotHandler;
 use crate::protocol::{FileToSend, ProtocolEvent, TransferPayload};
@@ -80,11 +80,11 @@ impl NetworkBehaviour for TransferBehaviour {
         match event {
             ProtocolEvent::Received {
                 name,
-                path,
                 hash,
+                path,
                 size_bytes,
             } => {
-                let event = TransferPayload::new(name, path, hash, size_bytes);
+                let event = TransferPayload::new(name, hash, path, size_bytes);
                 self.events
                     .push(NetworkBehaviourAction::GenerateEvent(event));
             }
