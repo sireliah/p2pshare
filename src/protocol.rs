@@ -1,7 +1,8 @@
 use async_std::fs::File as AsyncFile;
+use async_std::io as asyncio;
 use crypto::digest::Digest;
 use crypto::sha1::Sha1;
-use futures::{io as asyncio, prelude::*};
+use futures::prelude::*;
 use libp2p::core::{InboundUpgrade, OutboundUpgrade, UpgradeInfo};
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -111,16 +112,16 @@ async fn read_socket(
                 if n > 0 {
                     payloads.extend(&buff[..n]);
                     counter += n;
-                    if payloads.len() > (1024 * 1024) {
+                    if payloads.len() >= (CHUNK_SIZE * 256) {
                         file.write_all(&payloads)
                             .await
                             .expect("Writing file failed");
+                        file.flush().await?;
                         payloads.clear();
                     }
                 } else {
-                    file.write_all(&payloads)
-                        .await
-                        .expect("Writing file failed");
+                    file.write_all(&payloads).await.expect("Writing file failed");
+                    file.flush().await?;
                     payloads.clear();
                     break;
                 }
